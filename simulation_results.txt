@@ -1,0 +1,28 @@
+Resultados de Simulación EON
+==================================================
+
+Cargas de demanda: [50, 100, 150, 200]
+Ejecuciones por carga: 5
+
+Resultados detallados:
+--------------------------------------------------
+Carga: 50
+  SPFF - Watermark: 221.20, Bloqueo: 0.000
+  k-SP-MW - Watermark: 198.60, Bloqueo: 0.000
+  Mejora en watermark: 22.60
+
+Carga: 100
+  SPFF - Watermark: 319.20, Bloqueo: 0.070
+  k-SP-MW - Watermark: 319.00, Bloqueo: 0.112
+  Mejora en watermark: 0.20
+
+Carga: 150
+  SPFF - Watermark: 320.00, Bloqueo: 0.257
+  k-SP-MW - Watermark: 320.00, Bloqueo: 0.296
+  Mejora en watermark: 0.00
+
+Carga: 200
+  SPFF - Watermark: 320.00, Bloqueo: 0.373
+  k-SP-MW - Watermark: 320.00, Bloqueo: 0.437
+  Mejora en watermark: 0.00
+
