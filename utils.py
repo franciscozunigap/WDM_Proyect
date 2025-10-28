@@ -117,17 +117,45 @@ def get_path_distance(graph, path):
     return total_distance
 
 
-def sort_demands(demands):
+def sort_demands(demands, graph=None, strategy='bandwidth'):
     """
-    Ordena las demandas por ancho de banda (descendente)
+    Ordena las demandas según diferentes estrategias
     
     Args:
         demands (list): Lista de tuplas (source, target, bandwidth_gbps)
+        graph (networkx.Graph): Grafo de la red (opcional, necesario para algunas estrategias)
+        strategy (str): Estrategia de ordenamiento:
+            - 'bandwidth': Por ancho de banda descendente (default)
+            - 'smart': Considera bandwidth y longitud de camino
+            - 'random': Aleatorio (requiere shuffle previo)
         
     Returns:
         list: Lista ordenada de demandas
     """
-    return sorted(demands, key=lambda x: x[2], reverse=True)
+    if strategy == 'bandwidth' or graph is None:
+        # Ordenamiento por ancho de banda (descendente)
+        return sorted(demands, key=lambda x: x[2], reverse=True)
+    
+    elif strategy == 'smart':
+        # Ordenamiento inteligente: considera bandwidth Y dificultad de enrutamiento
+        def smart_key(demand):
+            source, target, bandwidth = demand
+            try:
+                # Calcular longitud del camino más corto
+                path_length = nx.shortest_path_length(graph, source, target, weight='distance_km')
+            except nx.NetworkXNoPath:
+                path_length = float('inf')
+            
+            # Score combinado: priorizar grandes anchos de banda en caminos largos
+            # (estas son las demandas más difíciles)
+            score = bandwidth * 100 + path_length * 0.01
+            return -score  # Negativo para orden descendente
+        
+        return sorted(demands, key=smart_key)
+    
+    else:
+        # Default: por bandwidth
+        return sorted(demands, key=lambda x: x[2], reverse=True)
 
 
 def get_k_shortest_paths(graph, source, target, k):
@@ -239,7 +267,7 @@ def get_network_statistics(graph):
         'num_nodes': graph.number_of_nodes(),
         'num_edges': graph.number_of_edges(),
         'density': nx.density(graph),
-        'is_connected': nx.is_strongly_connected(graph),
+        'is_connected': nx.is_connected(graph),  # Para grafos no dirigidos
         'average_degree': sum(dict(graph.degree()).values()) / graph.number_of_nodes(),
         'min_distance': min(data['distance_km'] for _, _, data in graph.edges(data=True)),
         'max_distance': max(data['distance_km'] for _, _, data in graph.edges(data=True)),

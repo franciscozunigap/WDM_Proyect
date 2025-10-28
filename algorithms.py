@@ -88,7 +88,12 @@ def run_spff(graph, demands, network_state):
 
 def run_ksp_mw(graph, demands, network_state):
     """
-    Ejecuta el algoritmo k-Shortest-Paths Minimum-Watermark (k-SP-MW)
+    Ejecuta el algoritmo k-Shortest-Paths Minimum-Watermark (k-SP-MW) mejorado
+    
+    Estrategia adaptativa:
+    - En baja carga: Minimiza agresivamente el watermark
+    - En alta carga: Prioriza aceptación de demandas usando diversidad de caminos
+    - Considera múltiples slots de inicio y caminos alternativos
     
     Args:
         graph (networkx.Graph): Grafo de la red
@@ -98,15 +103,34 @@ def run_ksp_mw(graph, demands, network_state):
     Returns:
         dict: Resultados del algoritmo
     """
-    # Ordenar demandas por ancho de banda (descendente)
-    sorted_demands = sort_demands(demands)
+    # Ordenar demandas por ancho de banda (mismo criterio que SPFF para comparación justa)
+    sorted_demands = sort_demands(demands, graph=graph, strategy='bandwidth')
     
     successful_assignments = 0
     blocked_assignments = 0
     
-    for source, target, bandwidth in sorted_demands:
+    for demand_idx, (source, target, bandwidth) in enumerate(sorted_demands):
+        # ESTRATEGIA ADAPTATIVA: Detectar si estamos en situación de alta carga
+        current_watermark = network_state.get_watermark()
+        watermark_ratio = current_watermark / network_state.num_slots  # Ratio de uso del espectro
+        utilization = network_state.get_utilization()
+        
+        # En alta carga (>70% del espectro usado), cambiar pesos de optimización
+        high_load_mode = watermark_ratio > 0.70 or utilization > 0.10
+        
+        # En saturación extrema (>92%), aceptar opciones viables rápidamente
+        extreme_load_mode = watermark_ratio > 0.92 or utilization > 0.18
+        
+        # Ajustar número de caminos según la carga
+        if extreme_load_mode:
+            k_to_use = 3  # Solo 3 caminos en modo extremo
+        elif high_load_mode:
+            k_to_use = 5  # 5 caminos en alta carga
+        else:
+            k_to_use = K_PATHS  # Todos los caminos en baja carga
+        
         # Obtener k caminos más cortos
-        k_paths = get_k_shortest_paths(graph, source, target, K_PATHS)
+        k_paths = get_k_shortest_paths(graph, source, target, k_to_use)
         
         if not k_paths:
             blocked_assignments += 1
@@ -116,9 +140,14 @@ def run_ksp_mw(graph, demands, network_state):
         best_watermark = float('inf')
         best_start_slot = -1
         best_slots_needed = 0
+        best_metric = float('inf')  # Métrica combinada para desempate
+        found_viable = False  # Flag para modo extremo
         
         # Evaluar cada camino
         for path in k_paths:
+            # En modo extremo, detener búsqueda al encontrar primera opción viable
+            if extreme_load_mode and found_viable:
+                break
             # Calcular distancia del camino
             path_distance = get_path_distance(graph, path)
             
@@ -137,19 +166,75 @@ def run_ksp_mw(graph, demands, network_state):
             if not link_indices:
                 continue
             
-            # Buscar primer slot disponible
-            start_slot = network_state.find_first_fit(link_indices, slots_needed)
+            # MEJORA 1: Estrategia adaptativa para buscar slots
+            if extreme_load_mode:
+                # Modo extremo: solo usar first-fit (más rápido, menos bloqueo)
+                ff_slot = network_state.find_first_fit(link_indices, slots_needed)
+                candidate_slots = [ff_slot] if ff_slot >= 0 else []
+            elif high_load_mode:
+                # Modo alta carga: limitar a 3 posiciones
+                candidate_slots = network_state.find_best_fit_positions(link_indices, slots_needed, max_positions=3)
+                if not candidate_slots:
+                    ff_slot = network_state.find_first_fit(link_indices, slots_needed)
+                    if ff_slot >= 0:
+                        candidate_slots = [ff_slot]
+            else:
+                # Modo baja carga: explorar hasta 10 posiciones para minimizar watermark
+                candidate_slots = network_state.find_best_fit_positions(link_indices, slots_needed, max_positions=10)
+                if not candidate_slots:
+                    ff_slot = network_state.find_first_fit(link_indices, slots_needed)
+                    if ff_slot >= 0:
+                        candidate_slots = [ff_slot]
             
-            if start_slot >= 0:
-                # Simular asignación para calcular watermark resultante
-                simulated_watermark = max(network_state.get_watermark(), start_slot + slots_needed)
+            for start_slot in candidate_slots:
+                if start_slot < 0:
+                    continue
                 
-                # Elegir el camino que minimice el watermark
-                if simulated_watermark < best_watermark:
-                    best_watermark = simulated_watermark
+                # MEJORA 2: Calcular el watermark máximo que resultaría en cada enlace del camino
+                max_link_watermark = 0
+                avg_link_watermark = 0
+                for link_idx in link_indices:
+                    # Watermark que tendría este enlace después de la asignación
+                    link_watermark = start_slot + slots_needed
+                    
+                    # Comparar con el watermark actual del enlace
+                    current_link_watermark = network_state.get_link_watermark(link_idx)
+                    link_watermark = max(current_link_watermark, link_watermark)
+                    
+                    # Mantener el máximo entre todos los enlaces del camino
+                    max_link_watermark = max(max_link_watermark, link_watermark)
+                    avg_link_watermark += link_watermark
+                
+                avg_link_watermark /= len(link_indices)
+                
+                # MEJORA 3: Métrica adaptativa según la carga
+                if high_load_mode:
+                    # Modo alta carga: Priorizar caminos diversos y slots bajos
+                    # Menos peso al watermark, más peso a encontrar espacio disponible
+                    metric = (max_link_watermark * 100 +      # Menos peso al watermark
+                             len(path) * 50 +                  # Más peso a caminos cortos
+                             start_slot * 1 +                  # Más peso a slots bajos  
+                             avg_link_watermark * 10)
+                else:
+                    # Modo baja carga: Minimizar agresivamente el watermark
+                    # Prioridad máxima a mantener watermark bajo
+                    metric = (max_link_watermark * 10000 +    # Máxima prioridad al watermark
+                             avg_link_watermark * 100 + 
+                             len(path) * 10 + 
+                             start_slot * 0.1)
+                
+                # Elegir el camino y slot que minimicen la métrica
+                if max_link_watermark < best_watermark or \
+                   (max_link_watermark == best_watermark and metric < best_metric):
+                    best_watermark = max_link_watermark
                     best_path = path
                     best_start_slot = start_slot
                     best_slots_needed = slots_needed
+                    best_metric = metric
+                    
+                    # En modo extremo, aceptar inmediatamente la primera opción viable
+                    if extreme_load_mode:
+                        found_viable = True
         
         # Asignar recursos al mejor camino encontrado
         if best_path is not None:

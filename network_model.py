@@ -118,6 +118,109 @@ class NetworkState:
         
         return -1  # No hay espacio disponible
     
+    def find_best_fit_positions(self, link_indices, slots_needed, max_positions=10):
+        """
+        Encuentra múltiples posiciones candidatas de slot que minimizan el watermark
+        
+        Estrategias consideradas:
+        1. Posiciones que no aumentan el watermark de ningún enlace
+        2. Posiciones que minimizan el aumento del watermark máximo
+        3. Posiciones que minimizan fragmentación
+        
+        Args:
+            link_indices (list): Lista de índices de enlaces
+            slots_needed (int): Número de slots consecutivos necesarios
+            max_positions (int): Máximo número de posiciones a retornar
+            
+        Returns:
+            list: Lista de posiciones de inicio ordenadas por conveniencia
+        """
+        if not link_indices or slots_needed <= 0:
+            return []
+        
+        # Verificar que todos los enlaces existen
+        for link_idx in link_indices:
+            if link_idx >= self.num_links or link_idx < 0:
+                return []
+        
+        # Calcular watermarks actuales de los enlaces del camino
+        current_watermarks = [self.get_link_watermark(link_idx) for link_idx in link_indices]
+        max_current_watermark = max(current_watermarks) if current_watermarks else 0
+        
+        candidate_positions = []
+        positions_no_increase = []  # Posiciones que no aumentan el watermark
+        
+        # Buscar todas las posiciones disponibles y calcular su "score"
+        for start_slot in range(self.num_slots - slots_needed + 1):
+            # Verificar si hay slots consecutivos disponibles en todos los enlaces
+            available = True
+            
+            for slot in range(start_slot, start_slot + slots_needed):
+                for link_idx in link_indices:
+                    if self.spectrum_state[link_idx, slot] == 1:
+                        available = False
+                        break
+                if not available:
+                    break
+            
+            if available:
+                # Calcular watermark máximo que resultaría
+                end_slot = start_slot + slots_needed
+                max_new_watermark = max(max_current_watermark, end_slot)
+                
+                # Calcular cuánto aumenta el watermark
+                watermark_increase = max_new_watermark - max_current_watermark
+                
+                # Priorizar posiciones que no aumentan el watermark
+                if watermark_increase == 0:
+                    # Score basado solo en fragmentación y posición
+                    score = start_slot * 0.1
+                    positions_no_increase.append((start_slot, score))
+                else:
+                    # Score que penaliza aumentos de watermark
+                    score = watermark_increase * 10000 + max_new_watermark * 100 + start_slot * 0.1
+                    candidate_positions.append((start_slot, score))
+        
+        # Priorizar posiciones que no aumentan el watermark
+        if positions_no_increase:
+            positions_no_increase.sort(key=lambda x: x[1])
+            result = [pos for pos, score in positions_no_increase[:max_positions]]
+            
+            # Si no hay suficientes, agregar algunas que sí aumentan
+            if len(result) < max_positions and candidate_positions:
+                candidate_positions.sort(key=lambda x: x[1])
+                remaining = max_positions - len(result)
+                result.extend([pos for pos, score in candidate_positions[:remaining]])
+            
+            return result
+        
+        # Si todas aumentan el watermark, retornar las que menos lo aumentan
+        if not candidate_positions:
+            return []
+        
+        candidate_positions.sort(key=lambda x: x[1])
+        return [pos for pos, score in candidate_positions[:max_positions]]
+    
+    def get_link_watermark(self, link_idx):
+        """
+        Obtiene el watermark de un enlace específico
+        
+        Args:
+            link_idx (int): Índice del enlace
+            
+        Returns:
+            int: Watermark del enlace (slot más alto ocupado + 1)
+        """
+        if link_idx >= self.num_links or link_idx < 0:
+            return 0
+        
+        # Encontrar el último slot ocupado en este enlace
+        for slot in range(self.num_slots - 1, -1, -1):
+            if self.spectrum_state[link_idx, slot] == 1:
+                return slot + 1
+        
+        return 0  # No hay slots ocupados
+    
     def asignar_recursos(self, link_indices, start_slot, slots_needed):
         """
         Asigna recursos del espectro marcando los slots como ocupados

@@ -5,7 +5,7 @@ Proyecto RMLSA - Routing, Modulation, and Spectrum Assignment
 
 # Parámetros de la topología NSFNET
 NSFNET_NODES = 14
-NSFNET_LINKS = 14
+NSFNET_LINKS = 23  # Enlaces únicos bidireccionales (topología real de la imagen)
 
 # Parámetros del espectro
 MAX_SLOTS = 320  # Total de slots por enlace
@@ -21,11 +21,11 @@ MODULATION_TABLE = {
 }
 
 # Parámetros del algoritmo heurístico
-K_PATHS = 3  # Número de caminos k para el algoritmo k-SP-MW
+K_PATHS = 10  # Número de caminos k para el algoritmo k-SP-MW (aumentado para mayor diversidad)
 
 # Parámetros del experimento
-DEMAND_LOADS = [50, 100, 150, 200]  # Cargas de demanda a simular (reducidas para pruebas)
-RUNS_PER_LOAD = 5  # Número de ejecuciones para promediar por punto de carga (reducido para pruebas)
+DEMAND_LOADS = [50, 100, 150, 200]  # Cargas de demanda a simular
+RUNS_PER_LOAD = 50  # Número de ejecuciones para promediar por punto de carga (aumentado para mejores promedios)
 DEMAND_BW_RANGE = (50, 400)  # Rango de ancho de banda de demanda en Gbps
 
 # Parámetros adicionales para la generación de demandas

@@ -9,49 +9,57 @@ from config import NSFNET_NODES, NSFNET_LINKS
 
 def create_nsfnet():
     """
-    Crea la topología NSFNET con 14 nodos y 21 enlaces
-    Incluye distancias realistas en kilómetros para cada enlace
+    Crea la topología NSFNET REAL con 14 nodos y 23 enlaces bidireccionales
+    Incluye distancias reales en kilómetros de la topología oficial
     
     Returns:
-        networkx.Graph: Grafo de la red NSFNET con atributos de distancia
+        networkx.Graph: Grafo no dirigido de la red NSFNET con atributos de distancia
     """
-    # Crear grafo dirigido para NSFNET
-    G = nx.DiGraph()
+    # Crear grafo NO dirigido para NSFNET (enlaces bidireccionales por naturaleza)
+    G = nx.Graph()
     
     # Agregar nodos (numerados del 0 al 13)
     for i in range(NSFNET_NODES):
         G.add_node(i)
     
-    # Definir enlaces de NSFNET con distancias realistas (en km)
-    # Topología NSFNET optimizada con exactamente 14 enlaces bidireccionales
+    # Definir enlaces de NSFNET con distancias REALES de la topología oficial (en km)
+    # Topología NSFNET real con 23 enlaces únicos bidireccionales
+    # Nodos: 0=Nodo1, 1=Nodo2, 2=Nodo3, 3=Nodo4, 4=Nodo5, 5=Nodo6, 6=Nodo7, 7=Nodo8, 8=Nodo9, 9=Nodo10, 10=Nodo11, 11=Nodo12, 12=Nodo13, 13=Nodo14
     nsfnet_links = [
-        # Enlaces principales de NSFNET (14 enlaces únicos)
-        (0, 1, 1200),   # Seattle - Palo Alto
-        (1, 2, 400),    # Palo Alto - Los Angeles  
-        (2, 3, 300),    # Los Angeles - San Diego
-        (3, 4, 2000),   # San Diego - Salt Lake City
-        (4, 5, 800),    # Salt Lake City - Denver
-        (5, 6, 600),    # Denver - Kansas City
-        (6, 7, 500),    # Kansas City - Chicago
-        (7, 8, 400),    # Chicago - Ann Arbor
-        (8, 9, 300),    # Ann Arbor - Cleveland
-        (9, 10, 200),   # Cleveland - Pittsburgh
-        (10, 11, 300),  # Pittsburgh - Princeton
-        (11, 12, 200),  # Princeton - Cambridge
-        (12, 13, 100),  # Cambridge - Ithaca
-        (13, 0, 2500),  # Ithaca - Seattle (enlace de cierre)
+        # 23 enlaces de la topología real NSFNET (según imagen oficial)
+        (0, 1, 2100),   # 1-2
+        (0, 2, 3000),   # 1-3
+        (0, 6, 4800),   # 1-7
+        (1, 2, 1200),   # 2-3
+        (1, 3, 1500),   # 2-4
+        (2, 5, 3600),   # 3-6
+        (3, 4, 1200),   # 4-5
+        (3, 6, 3900),   # 4-7
+        (4, 5, 2400),   # 5-6
+        (4, 6, 1200),   # 5-7
+        (5, 6, 2700),   # 6-7
+        (5, 9, 2100),   # 6-10
+        (5, 8, 3600),   # 6-9
+        (6, 7, 1500),   # 7-8
+        (7, 8, 1500),   # 8-9
+        (7, 10, 1500),  # 8-11
+        (8, 9, 1500),   # 9-10
+        (8, 11, 600),   # 9-12
+        (8, 12, 600),   # 9-13
+        (8, 13, 600),   # 9-14
+        (10, 11, 1200), # 11-12
+        (11, 12, 600),  # 12-13
+        (12, 13, 300),  # 13-14
     ]
     
-    # Agregar enlaces al grafo (solo los 14 enlaces únicos)
+    # Agregar enlaces al grafo (en Graph son automáticamente bidireccionales)
     for source, target, distance in nsfnet_links:
         G.add_edge(source, target, distance_km=distance)
-        # También agregar el enlace bidireccional
-        G.add_edge(target, source, distance_km=distance)
     
     # Verificar que tenemos el número correcto de enlaces
     actual_links = G.number_of_edges()
-    if actual_links != NSFNET_LINKS * 2:  # *2 porque son bidireccionales
-        print(f"Advertencia: NSFNET tiene {actual_links} enlaces, esperados {NSFNET_LINKS * 2}")
+    if actual_links != NSFNET_LINKS:
+        print(f"Advertencia: NSFNET tiene {actual_links} enlaces, esperados {NSFNET_LINKS} enlaces bidireccionales")
     
     return G
 
@@ -69,7 +77,7 @@ def get_nsfnet_info():
         'nodes': G.number_of_nodes(),
         'edges': G.number_of_edges(),
         'density': nx.density(G),
-        'is_connected': nx.is_strongly_connected(G),
+        'is_connected': nx.is_connected(G),  # Para grafos no dirigidos
         'average_degree': sum(dict(G.degree()).values()) / G.number_of_nodes(),
         'min_distance': min(data['distance_km'] for _, _, data in G.edges(data=True)),
         'max_distance': max(data['distance_km'] for _, _, data in G.edges(data=True)),
